@@ -16,15 +16,25 @@ struct Material {
 
 class Object {
 public:
-	Material material;
+	uint32_t materialIndex;
 
 	Object() {
 
 	}
 };
 
+class Camera {
+	float fov;
+	glm::vec3 position;
+	glm::vec3 direction;
+};
+
 class World {
+public:
+	Camera camera;
+	std::vector<Material> materials;
 
+	World() {
 
-
+	}
 };
