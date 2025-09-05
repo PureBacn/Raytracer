@@ -55,7 +55,7 @@ struct SwapChainSupportDetails {
 
 struct PushConstants {
 	glm::vec2 resolution;
-	float padding[2];
+	alignas(16) uint32_t frame;
 };
 
 #ifdef NDEBUG
@@ -1024,6 +1024,8 @@ private:
 
 		PushConstants pc;
 		pc.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
+		pc.frame = currentFrame;
+
 		vkCmdPushConstants(
 			commandBuffer,
 			pipelineLayout,

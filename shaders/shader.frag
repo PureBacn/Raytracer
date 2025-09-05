@@ -4,7 +4,7 @@
 #define MAXMATERIALS 32
 #define MAXOBJECTS 64
 #define RAYSPERPIXEL 32
-#define BOUNCEDEPTH 15 // How many times can rays bounce
+#define BOUNCEDEPTH 5 // How many times can rays bounce
 
 struct Material {
 	vec3 color;
@@ -46,7 +46,8 @@ layout(set = 1, binding = 0) uniform World {
 };
 
 layout(push_constant) uniform PushConstants {
-    vec2 resolution;   // 2 floats
+	vec2 resolution;   // 2 floats
+	uint frame;
 };
 
 layout(origin_upper_left) in vec4 gl_FragCoord;
@@ -64,15 +65,16 @@ struct RaycastResult {
 	Ray incoming;
 	Ray normal;
 	uint materialIndex;
+	float t;
 };
 
 vec4 multQuat(vec4 q1, vec4 q2) {
 	return vec4(
-        q1.w*q2.x + q1.x*q2.w + q1.y*q2.z - q1.z*q2.y,
-        q1.w*q2.y - q1.x*q2.z + q1.y*q2.w + q1.z*q2.x,
-        q1.w*q2.z + q1.x*q2.y - q1.y*q2.x + q1.z*q2.w,
-        q1.w*q2.w - q1.x*q2.x - q1.y*q2.y - q1.z*q2.z
-    );
+		q1.w*q2.x + q1.x*q2.w + q1.y*q2.z - q1.z*q2.y,
+		q1.w*q2.y - q1.x*q2.z + q1.y*q2.w + q1.z*q2.x,
+		q1.w*q2.z + q1.x*q2.y - q1.y*q2.x + q1.z*q2.w,
+		q1.w*q2.w - q1.x*q2.x - q1.y*q2.y - q1.z*q2.z
+	);
 }
 
 vec4 conjQuat(vec4 q) {
@@ -105,15 +107,16 @@ Ray toWorldPosition(vec2 screenxy) {
 }
 
 float fresnelSchlick(float cosTheta, float r) {
-    return r + (1.0 - r) * pow(1.0 - cosTheta, 5.0);
+	return r + (1.0 - r) * pow(1.0 - cosTheta, 5.0);
 }
 
 // PCG www.pcg-random.org
 float rand(inout uint state) {
-    state = state * 747796405 + 2891336453;
-    uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
-    result = (result >> 22) ^ result;
-    return float(result) / 4294967295.0;
+	state = state * 747796405 + 2891336453;
+	uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+	result = (result >> 22) ^ result;
+   	float randOut = float(result) / 4294967295.0;
+	return clamp(randOut, 1e-6, 1.0 - 1e-6);
 }
 
 float boxMuller(inout uint seed) {
@@ -171,9 +174,9 @@ Ray nextRayPath(inout uint seed, RaycastResult result) {
 	if (tNear <= tFar) {
 		vec3 hit = ray.origin + tNear * ray.dir;
 		vec3 normal = vec3(0.0);
-        if (tNear == t1.x) normal.x = (invDir.x < 0.0) ? 1.0 : -1.0;
-        else if (tNear == t1.y) normal.y = (invDir.y < 0.0) ? 1.0 : -1.0;
-        else if (tNear == t1.z) normal.z = (invDir.z < 0.0) ? 1.0 : -1.0;
+		if (tNear == t1.x) normal.x = (invDir.x < 0.0) ? 1.0 : -1.0;
+		else if (tNear == t1.y) normal.y = (invDir.y < 0.0) ? 1.0 : -1.0;
+		else if (tNear == t1.z) normal.z = (invDir.z < 0.0) ? 1.0 : -1.0;
 
 		result.hit = true;
 		result.materialIndex = box.materialIndex;
@@ -186,10 +189,9 @@ Ray nextRayPath(inout uint seed, RaycastResult result) {
 RaycastResult raycast(Ray ray, Ball ball) {
 	// Mathematical formulas from:
 	// https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection.html
-	
-	ray.dir = normalize(ray.dir);
 
 	RaycastResult result;
+	result.hit = false;
 	vec3 l = ball.origin - ray.origin; // Vector from ray org to ball org
 	
 	float tca = dot(l, ray.dir); // Projected Vector
@@ -212,6 +214,7 @@ RaycastResult raycast(Ray ray, Ball ball) {
 	result.incoming = ray;
 	result.materialIndex = ball.materialIndex;
 	result.normal = Ray(normal, hit);
+	result.t = t;
 
 	return result;
 }
@@ -225,7 +228,7 @@ RaycastResult intersectScene(Ray ray) {
 
 		RaycastResult contend = raycast(ray, ball);
 		if (!contend.hit) continue;
-		if (!result.hit || length(contend.normal.origin - ray.origin) < length(result.normal.origin - ray.origin)) {
+		if (!result.hit || contend.t < result.t) {
 			result = contend;
 		}
 	}
@@ -235,7 +238,7 @@ RaycastResult intersectScene(Ray ray) {
 
 vec3 findColor(inout uint seed, Ray ray) {
 	vec3 throughput = vec3(1.0);
-    vec3 color = vec3(0.0);
+	vec3 color = vec3(0.0);
 
 	for (uint i = 0; i < BOUNCEDEPTH; i++) {
 		RaycastResult result = intersectScene(ray);
@@ -246,7 +249,7 @@ vec3 findColor(inout uint seed, Ray ray) {
 			throughput *= material.color;
 			ray = nextRayPath(seed, result);
 		} else {
-			vec3 environment = mix(vec3(0.05, 0.1, 0.25), vec3(0.1), ray.dir.y * 0.5 + 0.5); // Environment gradient
+			vec3 environment = vec3(0,0,0); // mix(vec3(0.05, 0.1, 0.25), vec3(0.1), ray.dir.y * 0.5 + 0.5); // Environment gradient
 			color += throughput * environment; // Pass atmosphere color
 			break;
 		}
@@ -256,13 +259,10 @@ vec3 findColor(inout uint seed, Ray ray) {
 
 
 void main() {
-	Ray ray = toWorldPosition(gl_FragCoord.xy);
-
 	vec3 color = vec3(0.0,0.0,0.0);
 	
-	uint seed; // + frame * 719393;
+	uint seed = uint(gl_FragCoord.x + gl_FragCoord.y * resolution.x) + frame * 719393;; // + frame * 719393;
 	for (uint i = 0; i < RAYSPERPIXEL; i++) {
-		seed = uint(gl_FragCoord.x + gl_FragCoord.y * resolution.x) + i*12345;
 		vec2 jitter;
 		jitter.x = rand(seed);
 		jitter.y = rand(seed);
