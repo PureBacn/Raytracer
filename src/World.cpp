@@ -1,43 +1,55 @@
 #include <glm/glm.hpp>
 #include <iostream>
 #include <vector>
-#include <list>
+#include <array>
 
-struct Material {
-	glm::vec3 color;
-	float emission; // 0.0-1.0
-	float reflectiveness; // 0.0-1.0
-	float roughness; // 0.0-1.0
-	float transparency; // 0.0-1.0
-	float refrac; // 0.0-1.0
-	float scatter; // 0.0-1.0
+#define MAX_OBJECTS 2
+
+struct alignas(16) Material {
+	glm::vec3 color = glm::vec3(1.0, 1.0, 1.0);
+	glm::vec3 surfaceProp = glm::vec3(0.0, 0.0, 0.0); //emission, reflectiveness, roughness
+	glm::vec3 internalProp = glm::vec3(0.0, 0.0, 0.0); // transparency, refrac, scatter
 };
 
 // Custom Objects
 
-class Object {
+class alignas(16) Ball {
 public:
-	uint32_t materialIndex;
+	uint32_t materialIndex = 0;
+	alignas(16) glm::vec3 origin = glm::vec3(0,0,0); // x, y, z
+	float radius = 0.0;
 
-	Object() {
-
-	}
+	Ball() {}
 };
 
-class Camera {
+class alignas(16) Camera {
 public:
-	alignas(16) float fov;
-	alignas(16) glm::vec3 position;
-	alignas(16) glm::vec4 rotation;
+	float fov = 120.0;
+	alignas(16) glm::vec3 position = glm::vec3(0,0,20);
+	glm::vec4 rotation = glm::vec4(0,0,0,1);
 
-	Camera() : fov(90.0f), position(0.0f,0.0f,20.0f), rotation(0.0f,0.0f,0.0f,1.0f) {}
+	Camera() {}
 	Camera(float fov, glm::vec3 pos, glm::vec4 rot) : fov(fov), position(pos), rotation(rot) {}
 };
 
-class World {
+class alignas(16) World {
 public:
 	Camera camera;
-	std::list<Material> materials;
-	World() : materials({}) {}
-	World(Camera camera, std::list<Material> materials = {}) : camera(camera), materials(materials) {}
+	alignas(16) std::array<Ball, MAX_OBJECTS> balls;
+
+	World() {}
+	World(Camera camera) : camera(camera) {}
+
+	uint32_t getNewBallIndex() {
+		uint32_t index = 0;
+		for (Ball& ball : balls) {
+			if (ball.radius <= 0) return index;
+			index += 1;
+		}
+		return -1;
+	}
+
+	void addBall(Ball* ball) {
+		balls[getNewBallIndex()] = *ball;
+	}
 };

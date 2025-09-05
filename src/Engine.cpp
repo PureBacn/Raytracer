@@ -19,6 +19,9 @@
 #include <algorithm>
 #include <fstream>
 #include <chrono>
+#include <array>
+
+#define MAX_MATERIALS 64
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -28,7 +31,7 @@ const std::vector<const char*> deviceExtensions = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
-const int MAX_FRAMES_IN_FLIGHT = 5;
+const int MAX_FRAMES_IN_FLIGHT = 3;
 
 struct Resolution {
 	int width;
@@ -80,17 +83,23 @@ private:
 	std::vector<VkFramebuffer> swapChainFramebuffers;
 
 	VkRenderPass renderPass;
-	VkDescriptorSetLayout descriptorSetLayout;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
 
+	VkDescriptorPool descriptorPool;
+
+	VkBuffer materialBuffer;
+	VkDeviceMemory materialBufferMemory;
+	VkDescriptorSetLayout materialSetLayout;
+	VkDescriptorSet materialDescriptorSet;
+
 	std::vector<VkBuffer> uniformBuffers;
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
 	std::vector<void*> uniformBuffersMapped;
-	VkDescriptorPool descriptorPool;
+	VkDescriptorSetLayout uniformSetLayout;
 	std::vector<VkDescriptorSet> descriptorSets;
 
 	VkCommandPool commandPool;
@@ -104,6 +113,8 @@ private:
 	uint32_t imageIndex;
 	uint32_t currentFrame = 0;
 	bool framebufferResized = false;
+
+	std::vector<Material> materials;
 
 	bool checkValidationLayerSupport() {
 		uint32_t layerCount;
@@ -445,12 +456,17 @@ private:
 		pushConstantRange.offset = 0;
 		pushConstantRange.size = sizeof(PushConstants);
 
+		std::array<VkDescriptorSetLayout, 2> setLayouts = {
+			materialSetLayout, // set = 0
+			uniformSetLayout     // set = 1
+		};
+
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipelineLayoutInfo.pushConstantRangeCount = 1;
 		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+		pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
+		pipelineLayoutInfo.pSetLayouts = setLayouts.data();
 
 		if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create pipeline layout!");
@@ -784,7 +800,7 @@ private:
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create buffer!");
+            throw std::runtime_error("Failed to create buffer!");
         }
 
         VkMemoryRequirements memRequirements;
@@ -803,7 +819,7 @@ private:
     }
 
 	void createUniformBuffers() {
-		VkDeviceSize bufferSize = sizeof(Camera);
+		VkDeviceSize bufferSize = sizeof(World);
 
 		uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 		uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
@@ -816,38 +832,68 @@ private:
 		}
 	}
 
+	void createMaterialBuffer() {
+		VkDeviceSize bufferSize = sizeof(Material) * materials.size(); // Call after material definitions
+		createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, materialBuffer, materialBufferMemory);
+	}
+
 	void createDescriptorSetLayout() {
-		VkDescriptorSetLayoutBinding uboLayoutBinding{};
-		uboLayoutBinding.binding = 0;
-		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uboLayoutBinding.descriptorCount = 1;
-		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		uboLayoutBinding.pImmutableSamplers = nullptr; // Optional
-		
+		// Material Bind
+		VkDescriptorSetLayoutBinding materialLayoutBinding{};
+		materialLayoutBinding.binding = 0;
+		materialLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		materialLayoutBinding.descriptorCount = 1;
+		materialLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		materialLayoutBinding.pImmutableSamplers = nullptr; // Optional
+
+		VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
+		materialLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		materialLayoutInfo.bindingCount = 1;
+		materialLayoutInfo.pBindings = &materialLayoutBinding;
+
+		if (vkCreateDescriptorSetLayout(device, &materialLayoutInfo, nullptr, &materialSetLayout) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create descriptor set layout!");
+		}
+
+		// World Bind
+		VkDescriptorSetLayoutBinding worldLayoutBinding{};
+		worldLayoutBinding.binding = 0;
+		worldLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		worldLayoutBinding.descriptorCount = 1;
+		worldLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		worldLayoutBinding.pImmutableSamplers = nullptr; // Optional
+
 		VkDescriptorSetLayoutCreateInfo layoutInfo{};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 		layoutInfo.bindingCount = 1;
-		layoutInfo.pBindings = &uboLayoutBinding;
+		layoutInfo.pBindings = &worldLayoutBinding;
 
-		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &uniformSetLayout) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create descriptor set layout!");
 		}
 	}
 
 	void updateUniformBuffer(uint32_t currentImage) {
-		memcpy(uniformBuffersMapped[currentImage], &world.camera, sizeof(world.camera));
+		memcpy(uniformBuffersMapped[currentImage], &world, sizeof(world));
+	}
+
+	void uploadMaterials() {
+		void* data;
+		vkMapMemory(device, materialBufferMemory, 0, sizeof(Material) * materials.size(), 0, &data);
+		memcpy(data, materials.data(), sizeof(Material) * materials.size());
+		vkUnmapMemory(device, materialBufferMemory);
 	}
 
 	void createDescriptorPool() {
 		VkDescriptorPoolSize poolSize{};
 		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + 1);
 
 		VkDescriptorPoolCreateInfo poolInfo{};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		poolInfo.poolSizeCount = 1;
 		poolInfo.pPoolSizes = &poolSize;
-		poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + 1);
 
 		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create descriptor pool!");
@@ -855,23 +901,52 @@ private:
 	}
 
 	void createDescriptorSets() {
-		std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+		std::vector<VkDescriptorSetLayout> layouts;
+
+		layouts.push_back(materialSetLayout); // persistent
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			layouts.push_back(uniformSetLayout); // per-frame
+		}
+
 		VkDescriptorSetAllocateInfo allocInfo{};
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT+1);
 		allocInfo.pSetLayouts = layouts.data();
 
 		descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-		if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate descriptor sets!");
+
+		std::vector<VkDescriptorSet> allSets(layouts.size());
+		if (vkAllocateDescriptorSets(device, &allocInfo, allSets.data()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to allocate descriptor sets!");
 		}
+		
+		materialDescriptorSet = allSets[0];
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			descriptorSets[i] = allSets[i + 1];
+		}
+
+		VkDescriptorBufferInfo materialBufferInfo{};
+		materialBufferInfo.buffer = materialBuffer;
+		materialBufferInfo.offset = 0;
+		materialBufferInfo.range = sizeof(Material) * materials.size();
+
+		VkWriteDescriptorSet materialDescriptorWrite{};
+		materialDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		materialDescriptorWrite.dstSet = materialDescriptorSet;
+		materialDescriptorWrite.dstBinding = 0;
+		materialDescriptorWrite.dstArrayElement = 0;
+		materialDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		materialDescriptorWrite.descriptorCount = 1;
+		materialDescriptorWrite.pBufferInfo = &materialBufferInfo;
+
+		vkUpdateDescriptorSets(device, 1, &materialDescriptorWrite, 0, nullptr);
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			VkDescriptorBufferInfo bufferInfo{};
 			bufferInfo.buffer = uniformBuffers[i];
 			bufferInfo.offset = 0;
-			bufferInfo.range = sizeof(Camera);
+			bufferInfo.range = sizeof(World);
 
 			VkWriteDescriptorSet descriptorWrite{};
 			descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -958,7 +1033,23 @@ private:
 			&pc
 		);
 
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+		vkCmdBindDescriptorSets(
+			commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			pipelineLayout,
+			0,
+			1, &materialDescriptorSet,
+			0, nullptr
+		);
+
+		vkCmdBindDescriptorSets(
+			commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			pipelineLayout,
+			1,
+			1, &descriptorSets[currentFrame],
+			0, nullptr
+		);
 
 		VkRect2D scissor{};
 		scissor.offset = {0, 0};
@@ -1047,16 +1138,16 @@ private:
 
 		VkSubmitInfo submitInfo{};
     	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
+		
 		VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
 		VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
 		submitInfo.waitSemaphoreCount = 1;
 		submitInfo.pWaitSemaphores = waitSemaphores;
 		submitInfo.pWaitDstStageMask = waitStages;
-
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
-
+		
 		VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[imageIndex]};
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = signalSemaphores;
@@ -1067,14 +1158,12 @@ private:
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = signalSemaphores;
 
 		VkSwapchainKHR swapChains[] = {swapChain};
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = swapChains;
-
 		presentInfo.pImageIndices = &imageIndex;
 
 		result = vkQueuePresentKHR(presentQueue, &presentInfo);
@@ -1102,13 +1191,17 @@ private:
 		
 		cleanupSwapChain();
 
+		vkDestroyBuffer(device, materialBuffer, nullptr);
+		vkFreeMemory(device, materialBufferMemory, nullptr);
+
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			vkDestroyBuffer(device, uniformBuffers[i], nullptr);
 			vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
 		}
 
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, uniformSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, materialSetLayout, nullptr);
 
 		vkDestroyCommandPool(device, commandPool, nullptr);
 		vkDestroyPipeline(device, graphicsPipeline, nullptr);
@@ -1131,6 +1224,14 @@ public:
 
 	Engine(Resolution res, std::string& engineTitle, std::string& deviceName) : resolution(res), title(engineTitle), renderDeviceName(deviceName) {}
 
+	void addMaterial(Material material) {
+		materials.push_back(material);
+	}
+
+	void addBall(Ball* ball) {
+		world.addBall(ball);
+	}
+	
 	void createWindow() {
 		if (!glfwInit()) {
 			throw std::runtime_error("Failed to initialize GLFW");
@@ -1179,6 +1280,7 @@ public:
 
 		createFramebuffers();
 		createUniformBuffers();
+		createMaterialBuffer();
 		createDescriptorPool();
     	createDescriptorSets();
 
@@ -1188,6 +1290,8 @@ public:
 	}
 
 	void run() {
+		uploadMaterials(); // Upload Materials
+
 		while (!glfwWindowShouldClose(window)) {
 			glfwPollEvents();
 			drawFrame();
