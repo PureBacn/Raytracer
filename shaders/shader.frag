@@ -3,8 +3,8 @@
 #define PI 3.1415926538
 #define MAXMATERIALS 32
 #define MAXOBJECTS 64
-#define RAYSPERPIXEL 32
-#define BOUNCEDEPTH 5 // How many times can rays bounce
+#define RAYSPERPIXEL 50
+#define BOUNCEDEPTH 200 // How many times can rays bounce
 
 struct Material {
 	vec3 color;
@@ -41,8 +41,14 @@ layout(set = 0, binding = 0) uniform Materials {
 
 layout(set = 1, binding = 0) uniform World {
 	Camera camera;
+};
+
+layout(set = 2, binding = 0) uniform Balls {
 	Ball balls[MAXOBJECTS];
-	//Box boxes[MAXOBJECTS];
+};
+
+layout(set = 3, binding = 0) uniform Boxes {
+	Box boxes[MAXOBJECTS];
 };
 
 layout(push_constant) uniform PushConstants {
@@ -158,10 +164,10 @@ Ray nextRayPath(inout uint seed, RaycastResult result) {
 	return ray;
 }
 
-/*RaycastResult raycast(Ray ray, Box box)
+RaycastResult raycast(Ray ray, Box box)
 {	
 	RaycastResult result;
-	return result;
+	result.hit = false;
 	
 	vec3 invDir = 1 / ray.dir;
 	vec3 tMin = (box.boxMin - ray.origin) * invDir;
@@ -171,9 +177,10 @@ Ray nextRayPath(inout uint seed, RaycastResult result) {
 	float tNear = max(max(t1.x, t1.y), t1.z);
 	float tFar = min(min(t2.x, t2.y), t2.z);
 
-	if (tNear <= tFar) {
+	if (tNear <= tFar && tNear >= 0.0) {
 		vec3 hit = ray.origin + tNear * ray.dir;
 		vec3 normal = vec3(0.0);
+
 		if (tNear == t1.x) normal.x = (invDir.x < 0.0) ? 1.0 : -1.0;
 		else if (tNear == t1.y) normal.y = (invDir.y < 0.0) ? 1.0 : -1.0;
 		else if (tNear == t1.z) normal.z = (invDir.z < 0.0) ? 1.0 : -1.0;
@@ -182,9 +189,11 @@ Ray nextRayPath(inout uint seed, RaycastResult result) {
 		result.materialIndex = box.materialIndex;
 		result.incoming = ray;
 		result.normal = Ray(normal, hit);
+		result.t = tNear;
 	}
+
 	return result;
-}*/
+}
 
 RaycastResult raycast(Ray ray, Ball ball) {
 	// Mathematical formulas from:
@@ -233,6 +242,17 @@ RaycastResult intersectScene(Ray ray) {
 		}
 	}
 
+	for (uint i = 0; i < MAXOBJECTS; i++) { // Find closest box hit (no culling)
+		Box box = boxes[i];
+		if (box.boxMin == box.boxMax) break;
+
+		RaycastResult contend = raycast(ray, box);
+		if (!contend.hit) continue;
+		if (!result.hit || contend.t < result.t) {
+			result = contend;
+		}
+	}
+
 	return result;
 }
 
@@ -245,6 +265,8 @@ vec3 findColor(inout uint seed, Ray ray) {
 
 		if (result.hit) {
 			Material material = materials[result.materialIndex];
+			//return material.color;
+
 			color += material.color * throughput * material.emission;
 			throughput *= material.color;
 			ray = nextRayPath(seed, result);
@@ -266,12 +288,16 @@ void main() {
 		vec2 jitter;
 		jitter.x = rand(seed);
 		jitter.y = rand(seed);
-		jitter = vec2(0);
 		Ray ray = toWorldPosition(gl_FragCoord.xy + jitter);
 		color += findColor(seed, ray);
 	}
 
 	color /= RAYSPERPIXEL;
+
+	Ball ball = balls[0];
+	if (ball.origin.z == -3.0) {
+		//color = vec3(1);
+	}
 
 	outColor = vec4(color, 1.0);
 }

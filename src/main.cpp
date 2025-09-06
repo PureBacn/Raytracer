@@ -18,19 +18,19 @@ int main(int argc, char** argv) {
 
 		Material redMaterial;
 		redMaterial.color = glm::vec3(1.0f, 0.0f, 0.0f);
-		redMaterial.surfaceProp.y = 0.5;
+		redMaterial.surfaceProp.y = 0;
 
 		engine.addMaterial(redMaterial);
 
 		Material greenMaterial;
 		greenMaterial.color = glm::vec3(0.0f, 1.0f, 0.0f);
-		greenMaterial.surfaceProp.y = 0.5;
+		greenMaterial.surfaceProp.y = 0;
 
 		engine.addMaterial(greenMaterial);
 
 		Material blueMaterial;
 		blueMaterial.color = glm::vec3(0.0f, 0.0f, 1.0f);
-		blueMaterial.surfaceProp.y = 0.5;
+		blueMaterial.surfaceProp.y = 0;
 
 		engine.addMaterial(blueMaterial);
 
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
 
 		Material groundMaterial;
 		groundMaterial.color = glm::vec3(0.2f, 0.2f, 0.2f);
-		groundMaterial.surfaceProp.y = 0.5;
+		groundMaterial.surfaceProp.y = 0;
 
 		engine.addMaterial(groundMaterial);
 
@@ -72,10 +72,10 @@ int main(int argc, char** argv) {
 
 		Box* box0 = new Box();
 		box0->materialIndex = 4;
-		box0->boxMin = glm::vec3(-10,-5,-10);
-		box0->boxMax = glm::vec3(10,-3,10);
+		box0->boxMin = glm::vec3(-20,-5,-10);
+		box0->boxMax = glm::vec3(20,-3,10);
 
-		//engine.addBox(box0);
+		engine.addBox(box0);
 
 		engine.createWindow();
 		engine.initVulkan();
@@ -85,6 +85,6 @@ int main(int argc, char** argv) {
 		cerr << "Error: " << e.what() << endl;
 		return -1;
 	}
-
+ 
 	return 0;
 }

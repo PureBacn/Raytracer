@@ -1,7 +1,6 @@
 #include <glm/glm.hpp>
 #include <iostream>
 #include <vector>
-#include <array>
 
 #define MAXOBJECTS 32
 
@@ -26,7 +25,7 @@ class alignas(16) Box {
 public:
 	uint32_t materialIndex = 0;
 	alignas(16) glm::vec3 boxMin = glm::vec3(0,0,0); // x, y, z
-	glm::vec3 boxMax = glm::vec3(0,0,0); // x, y, z
+	alignas(16) glm::vec3 boxMax = glm::vec3(0,0,0); // x, y, z
 
 	Box() {}
 };
@@ -44,41 +43,17 @@ public:
 class alignas(16) World {
 public:
 	Camera camera;
-	alignas(16) std::array<Ball, MAXOBJECTS> balls;
-	//alignas(16) std::array<Box, MAXOBJECTS> boxes;
+	alignas(16) std::vector<Ball> balls;
+	alignas(16) std::vector<Box> boxes;
 
 	World() {}
 	World(Camera camera) : camera(camera) {}
 
-	uint32_t getNewBallIndex() {
-		uint32_t index = 0;
-		for (Ball& ball : balls) {
-			if (ball.radius <= 0) return index;
-			index += 1;
-		}
-		return -1;
-	}
-
-	uint32_t getNewBoxIndex() {
-		/*uint32_t index = 0;
-		for (Box& box : boxes) {
-			std::cout << "(" 
-				<< box.boxMin.x << ", " << box.boxMin.y << ", " << box.boxMin.z << ") "
-				<< "(" << box.boxMax.x << ", " << box.boxMax.y << ", " << box.boxMax.z << ") "
-				<< (box.boxMin == box.boxMax)  // prints 0 or 1
-				<< std::endl;
-			return 0;
-			if (box.boxMin == box.boxMax) return index;
-			index += 1;
-		}*/
-		return 0;
-	}
-
 	void addBall(Ball* ball) {
-		balls[getNewBallIndex()] = *ball;
+		balls.push_back(*ball);
 	}
 
 	void addBox(Box* box) {
-		//boxes[getNewBoxIndex()] = *box;
+		boxes.push_back(*box);
 	}
 };

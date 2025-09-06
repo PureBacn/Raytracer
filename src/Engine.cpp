@@ -21,7 +21,8 @@
 #include <chrono>
 #include <array>
 
-#define MAX_MATERIALS 64
+#define MAXOBJECTS 32
+#define MAXMATERIALS 64
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -101,6 +102,17 @@ private:
 	std::vector<void*> uniformBuffersMapped;
 	VkDescriptorSetLayout uniformSetLayout;
 	std::vector<VkDescriptorSet> descriptorSets;
+
+	VkBuffer ballBuffer;
+	VkDeviceMemory ballBufferMemory;
+	VkDescriptorSetLayout ballSetLayout;
+	VkDescriptorSet ballDescriptorSet;
+
+	VkBuffer boxBuffer;
+	VkDeviceMemory boxBufferMemory;
+	VkDescriptorSetLayout boxSetLayout;
+	VkDescriptorSet boxDescriptorSet;
+	
 
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
@@ -456,9 +468,11 @@ private:
 		pushConstantRange.offset = 0;
 		pushConstantRange.size = sizeof(PushConstants);
 
-		std::array<VkDescriptorSetLayout, 2> setLayouts = {
+		std::array<VkDescriptorSetLayout, 4> setLayouts = {
 			materialSetLayout, // set = 0
-			uniformSetLayout     // set = 1
+			uniformSetLayout,  // set = 1
+			ballSetLayout,    // set = 2
+			boxSetLayout    // set = 3
 		};
 
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -833,8 +847,22 @@ private:
 	}
 
 	void createMaterialBuffer() {
-		VkDeviceSize bufferSize = sizeof(Material) * materials.size(); // Call after material definitions
-		createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, materialBuffer, materialBufferMemory);
+		VkDeviceSize bufferSize = sizeof(Material) * MAXMATERIALS; // Call after material definitions
+		createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			materialBuffer, materialBufferMemory);
+	}
+
+	void createObjectBuffer() {
+		VkDeviceSize ballBufferSize = sizeof(Ball) * MAXOBJECTS;
+		createBuffer(ballBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            ballBuffer, ballBufferMemory);
+
+		VkDeviceSize boxBufferSize = sizeof(Box) * MAXOBJECTS;
+		createBuffer(boxBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            boxBuffer, boxBufferMemory);
 	}
 
 	void createDescriptorSetLayout() {
@@ -871,29 +899,82 @@ private:
 		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &uniformSetLayout) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create descriptor set layout!");
 		}
-	}
 
-	void updateUniformBuffer(uint32_t currentImage) {
-		memcpy(uniformBuffersMapped[currentImage], &world, sizeof(world));
+		// Balls Bind
+		VkDescriptorSetLayoutBinding ballLayout{};
+		ballLayout.binding = 0;
+		ballLayout.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		ballLayout.descriptorCount = 1;
+		ballLayout.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		ballLayout.pImmutableSamplers = nullptr; // Optional
+
+		// Boxes Bind
+		VkDescriptorSetLayoutBinding boxLayout{};
+		boxLayout.binding = 0;
+		boxLayout.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		boxLayout.descriptorCount = 1;
+		boxLayout.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		boxLayout.pImmutableSamplers = nullptr; // Optional
+
+		VkDescriptorSetLayoutCreateInfo ballLayoutInfo{};
+		ballLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		ballLayoutInfo.bindingCount = 1;
+		ballLayoutInfo.pBindings = &ballLayout;
+
+		VkDescriptorSetLayoutCreateInfo boxLayoutInfo{};
+		boxLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		boxLayoutInfo.bindingCount = 1;
+		boxLayoutInfo.pBindings = &boxLayout;
+
+		if (vkCreateDescriptorSetLayout(device, &ballLayoutInfo, nullptr, &ballSetLayout) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create ball set layout!");
+		}
+
+		if (vkCreateDescriptorSetLayout(device, &boxLayoutInfo, nullptr, &boxSetLayout) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create box set layout!");
+		}
 	}
 
 	void uploadMaterials() {
+		if (materials.size() <= 0) return;
 		void* data;
 		vkMapMemory(device, materialBufferMemory, 0, sizeof(Material) * materials.size(), 0, &data);
 		memcpy(data, materials.data(), sizeof(Material) * materials.size());
 		vkUnmapMemory(device, materialBufferMemory);
 	}
 
+	void updateUniformBuffer(uint32_t currentImage) {
+		memcpy(uniformBuffersMapped[currentImage], &world.camera, sizeof(world.camera));
+	}
+
+	// Balls
+	void uploadBalls() {
+		if (world.balls.size() <= 0) return;
+		void* data;
+		vkMapMemory(device, ballBufferMemory, 0, sizeof(Ball) * world.balls.size(), 0, &data);
+		memcpy(data, world.balls.data(), sizeof(Ball) * world.balls.size());
+		vkUnmapMemory(device, ballBufferMemory);
+	}
+
+	// Boxes
+	void uploadBoxes() {
+		if (world.boxes.size() <= 0) return;
+		void* data;
+		vkMapMemory(device, boxBufferMemory, 0, sizeof(Box) * world.boxes.size(), 0, &data);
+		memcpy(data, world.boxes.data(), sizeof(Box) * world.boxes.size());
+		vkUnmapMemory(device, boxBufferMemory);
+	}
+
 	void createDescriptorPool() {
 		VkDescriptorPoolSize poolSize{};
 		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + 1);
+		poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + 3);
 
 		VkDescriptorPoolCreateInfo poolInfo{};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		poolInfo.poolSizeCount = 1;
 		poolInfo.pPoolSizes = &poolSize;
-		poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + 1);
+		poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + 3);
 
 		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create descriptor pool!");
@@ -907,11 +988,13 @@ private:
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			layouts.push_back(uniformSetLayout); // per-frame
 		}
+		layouts.push_back(ballSetLayout);
+		layouts.push_back(boxSetLayout);
 
 		VkDescriptorSetAllocateInfo allocInfo{};
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT+1);
+		allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
 		allocInfo.pSetLayouts = layouts.data();
 
 		descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
@@ -925,11 +1008,13 @@ private:
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			descriptorSets[i] = allSets[i + 1];
 		}
+		ballDescriptorSet = allSets[MAX_FRAMES_IN_FLIGHT+1];
+		boxDescriptorSet = allSets[MAX_FRAMES_IN_FLIGHT+2];
 
 		VkDescriptorBufferInfo materialBufferInfo{};
 		materialBufferInfo.buffer = materialBuffer;
 		materialBufferInfo.offset = 0;
-		materialBufferInfo.range = sizeof(Material) * materials.size();
+		materialBufferInfo.range = sizeof(Material) * MAXMATERIALS;
 
 		VkWriteDescriptorSet materialDescriptorWrite{};
 		materialDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -961,6 +1046,37 @@ private:
 
 			vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
 		}
+
+		VkDescriptorBufferInfo ballBufferInfo{};
+		ballBufferInfo.buffer = ballBuffer;
+		ballBufferInfo.offset = 0;
+		ballBufferInfo.range = sizeof(Ball) * MAXOBJECTS;
+
+		VkDescriptorBufferInfo boxBufferInfo{};
+		boxBufferInfo.buffer = boxBuffer;
+		boxBufferInfo.offset = 0;
+		boxBufferInfo.range = sizeof(Box) * MAXOBJECTS;
+
+		VkWriteDescriptorSet ballWrite{};
+		ballWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		ballWrite.dstSet = ballDescriptorSet;
+		ballWrite.dstBinding = 0;
+		ballWrite.dstArrayElement = 0;
+		ballWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		ballWrite.descriptorCount = 1;
+		ballWrite.pBufferInfo = &ballBufferInfo;
+
+		VkWriteDescriptorSet boxWrite{};
+		boxWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		boxWrite.dstBinding = 0;
+		boxWrite.dstSet = boxDescriptorSet;
+		boxWrite.dstArrayElement = 0;
+		boxWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		boxWrite.descriptorCount = 1;
+		boxWrite.pBufferInfo = &boxBufferInfo;
+
+		vkUpdateDescriptorSets(device, 1, &ballWrite, 0, nullptr);
+		vkUpdateDescriptorSets(device, 1, &boxWrite, 0, nullptr);
 	}
 
 	void createCommandPool() {
@@ -1039,8 +1155,7 @@ private:
 			commandBuffer,
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipelineLayout,
-			0,
-			1, &materialDescriptorSet,
+			0, 1, &materialDescriptorSet,
 			0, nullptr
 		);
 
@@ -1048,8 +1163,23 @@ private:
 			commandBuffer,
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipelineLayout,
-			1,
-			1, &descriptorSets[currentFrame],
+			1, 1, &descriptorSets[currentFrame],
+			0, nullptr
+		);
+
+		vkCmdBindDescriptorSets(
+			commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			pipelineLayout,
+			2, 1, &ballDescriptorSet,
+			0, nullptr
+		);
+
+		vkCmdBindDescriptorSets(
+			commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			pipelineLayout,
+			3, 1, &boxDescriptorSet,
 			0, nullptr
 		);
 
@@ -1196,6 +1326,11 @@ private:
 		vkDestroyBuffer(device, materialBuffer, nullptr);
 		vkFreeMemory(device, materialBufferMemory, nullptr);
 
+		vkDestroyBuffer(device, ballBuffer, nullptr);
+		vkDestroyBuffer(device, boxBuffer, nullptr);
+		vkFreeMemory(device, ballBufferMemory, nullptr);
+		vkFreeMemory(device, boxBufferMemory, nullptr);
+
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			vkDestroyBuffer(device, uniformBuffers[i], nullptr);
 			vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
@@ -1204,6 +1339,8 @@ private:
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(device, uniformSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, materialSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, ballSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, boxSetLayout, nullptr);
 
 		vkDestroyCommandPool(device, commandPool, nullptr);
 		vkDestroyPipeline(device, graphicsPipeline, nullptr);
@@ -1232,6 +1369,10 @@ public:
 
 	void addBall(Ball* ball) {
 		world.addBall(ball);
+	}
+
+	void addBox(Box* box) {
+		world.addBox(box);
 	}
 	
 	void createWindow() {
@@ -1283,6 +1424,8 @@ public:
 		createFramebuffers();
 		createUniformBuffers();
 		createMaterialBuffer();
+		createObjectBuffer();
+
 		createDescriptorPool();
     	createDescriptorSets();
 
@@ -1293,6 +1436,8 @@ public:
 
 	void run() {
 		uploadMaterials(); // Upload Materials
+		uploadBalls();
+		uploadBoxes();
 
 		while (!glfwWindowShouldClose(window)) {
 			glfwPollEvents();
