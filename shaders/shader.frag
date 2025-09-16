@@ -3,8 +3,9 @@
 #define PI 3.1415926538
 #define MAXMATERIALS 32
 #define MAXOBJECTS 64
-#define RAYSPERPIXEL 50
-#define BOUNCEDEPTH 200 // How many times can rays bounce
+#define RAYSPERPIXEL 75
+#define BOUNCEDEPTH 150 // How many times can rays bounce
+#define MATERIALINTERSECTIONDEPTH 50
 
 struct Material {
 	vec3 color;
@@ -35,6 +36,9 @@ struct Box {
 };
 
 // Inputs
+layout(binding = 0) uniform sampler2D previousFrame;
+layout(binding = 1, rgba32f) uniform image2D currentFrame;
+
 layout(set = 0, binding = 0) uniform Materials {
 	Material materials[MAXMATERIALS];
 };
@@ -71,8 +75,36 @@ struct RaycastResult {
 	Ray incoming;
 	Ray normal;
 	uint materialIndex;
+	float dist;
 	float t;
+}; 
+
+struct MaterialStack {
+	uint lastMaterial;
+	uint stack[MATERIALINTERSECTIONDEPTH];
 };
+
+Material air = Material(vec3(1.0), 0.0, 0.0, 1.0, 1.0, 1.0, 0.0);
+
+Material getMaterial(uint materialIndex) {
+	return materialIndex < 0 ? air : materials[materialIndex];
+}
+
+void pushMaterial(MaterialStack stack, uint materialIndex) {
+	stack.lastMaterial += 1;
+	stack.stack[stack.lastMaterial] = materialIndex;
+}
+
+uint popMaterial(MaterialStack stack) {
+	uint materialIndex = stack.stack[stack.lastMaterial];
+	stack.lastMaterial -= 1;
+
+	return materialIndex;
+}
+
+uint peekMaterial(MaterialStack stack) {
+	return stack.stack[stack.lastMaterial];
+}
 
 vec4 multQuat(vec4 q1, vec4 q2) {
 	return vec4(
@@ -146,21 +178,49 @@ vec3 getRandomHemisphere(inout uint seed, Ray normal) {
 	return dot(point, normal.dir) > 0 ? point : -point;
 }
 
-Ray nextRayPath(inout uint seed, RaycastResult result) {
-	Material material = materials[result.materialIndex];
+Ray nextRayPath(inout uint seed, RaycastResult result, MaterialStack stack) {
+	Material material = getMaterial(result.materialIndex);
 	float fs = fresnelSchlick(dot(-result.incoming.dir, result.normal.dir), material.reflectiveness);
 
 	Ray ray;
-	ray.origin = result.normal.origin + 0.001 * result.normal.dir;
 
 	if (rand(seed) < fs) {
 		// Specular reflection (glossy)
 		vec3 perfect = reflect(-result.incoming.dir, result.normal.dir);
 		ray.dir = normalize(perfect + (1 - material.smoothness) * getRandomPoint(seed, result.normal));
+	} else if (material.transparency > 0) {
+		float cosTheta = dot(-result.incoming.dir, result.normal.dir);
+		bool entering = cosTheta > 0.0;
+		float eta;
+
+		if (entering) {
+            // Push current medium
+            Material lastMaterial = getMaterial(peekMaterial(stack));
+            eta = lastMaterial.refrac / material.refrac;
+            pushMaterial(stack, result.materialIndex);
+        } else {
+            // Pop back to previous medium
+            uint lastIndex = popMaterial(stack);
+            Material lastMaterial = getMaterial(lastIndex);
+            eta = material.refrac / lastMaterial.refrac;
+        }
+		eta = 1.0;
+
+		vec3 refraction = refract(result.incoming.dir, result.normal.dir, eta);
+
+		if (length(refraction) > 0.0) {
+            ray.dir = normalize(refraction);
+        } else {
+            // Total internal reflection
+            ray.dir = reflect(-result.incoming.dir, result.normal.dir);
+        }
 	} else {
 		// Diffuse bounce
 		ray.dir = getRandomHemisphere(seed, result.normal);
 	}
+
+	ray.origin = result.normal.origin + 0.001 * ray.dir;
+
 	return ray;
 }
 
@@ -190,6 +250,7 @@ RaycastResult raycast(Ray ray, Box box)
 		result.incoming = ray;
 		result.normal = Ray(normal, hit);
 		result.t = tNear;
+		result.dist = length(ray.origin - hit);
 	}
 
 	return result;
@@ -201,8 +262,9 @@ RaycastResult raycast(Ray ray, Ball ball) {
 
 	RaycastResult result;
 	result.hit = false;
+
 	vec3 l = ball.origin - ray.origin; // Vector from ray org to ball org
-	
+
 	float tca = dot(l, ray.dir); // Projected Vector
 	float d2 = dot(l, l) - tca * tca; // Dist from ball org
 
@@ -224,6 +286,7 @@ RaycastResult raycast(Ray ray, Ball ball) {
 	result.materialIndex = ball.materialIndex;
 	result.normal = Ray(normal, hit);
 	result.t = t;
+	result.dist = length(ray.origin - hit);
 
 	return result;
 }
@@ -231,6 +294,7 @@ RaycastResult raycast(Ray ray, Ball ball) {
 RaycastResult intersectScene(Ray ray) {
 	RaycastResult result;
 	result.hit = false;
+
 	for (uint i = 0; i < MAXOBJECTS; i++) { // Find closest ball hit (no culling)
 		Ball ball = balls[i];
 		if (ball.radius <= 0.0f) break;
@@ -260,25 +324,34 @@ vec3 findColor(inout uint seed, Ray ray) {
 	vec3 throughput = vec3(1.0);
 	vec3 color = vec3(0.0);
 
+	MaterialStack stack;
+	stack.lastMaterial = -1;
+	pushMaterial(stack, -1); // Push Air
+
 	for (uint i = 0; i < BOUNCEDEPTH; i++) {
 		RaycastResult result = intersectScene(ray);
 
 		if (result.hit) {
-			Material material = materials[result.materialIndex];
-			//return material.color;
+			Material material = getMaterial(result.materialIndex);
+			//return material.color; // * (1.0-material.transparency);
 
 			color += material.color * throughput * material.emission;
-			throughput *= material.color;
-			ray = nextRayPath(seed, result);
+			if (material.transparency > 0) {
+				//vec3 absorb = pow(material.color, vec3(result.dist * (1.0 - material.transparency)));
+				//throughput *= absorb;
+				throughput *= mix(material.color, vec3(1.0), material.transparency);
+			} else {
+				throughput *= material.color;
+			}
+			ray = nextRayPath(seed, result, stack);
 		} else {
-			vec3 environment = vec3(0,0,0); // mix(vec3(0.05, 0.1, 0.25), vec3(0.1), ray.dir.y * 0.5 + 0.5); // Environment gradient
+			vec3 environment = vec3(0.1,0.15,0.2); // mix(vec3(0.05, 0.1, 0.25), vec3(0.1), ray.dir.y * 0.5 + 0.5); // Environment gradient
 			color += throughput * environment; // Pass atmosphere color
 			break;
 		}
 	}
 	return color;
 }
-
 
 void main() {
 	vec3 color = vec3(0.0,0.0,0.0);
@@ -294,10 +367,8 @@ void main() {
 
 	color /= RAYSPERPIXEL;
 
-	Ball ball = balls[0];
-	if (ball.origin.z == -3.0) {
-		//color = vec3(1);
-	}
+	vec2 uv = gl_FragCoord.xy / resolution.xy;
+	vec3 lastColor = texture(previousFrame, uv).rgb;
 
-	outColor = vec4(color, 1.0);
+	outColor = vec4((color+lastColor)/2.0, 1.0);
 }

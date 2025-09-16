@@ -18,52 +18,63 @@ int main(int argc, char** argv) {
 
 		Material redMaterial;
 		redMaterial.color = glm::vec3(1.0f, 0.0f, 0.0f);
-		redMaterial.surfaceProp.y = 0;
+		redMaterial.surfaceProp.y = 0.0f; // Reflectiveness
+		redMaterial.internalProp.x = 0.8f; // Transparency
+		redMaterial.internalProp.y = 1.0f; // Refrac
 
 		engine.addMaterial(redMaterial);
 
 		Material greenMaterial;
 		greenMaterial.color = glm::vec3(0.0f, 1.0f, 0.0f);
-		greenMaterial.surfaceProp.y = 0;
+		greenMaterial.surfaceProp.y = 0.0f;
+		greenMaterial.internalProp.x = 0.8f;
+		greenMaterial.internalProp.y = 1.0f;
 
 		engine.addMaterial(greenMaterial);
 
 		Material blueMaterial;
 		blueMaterial.color = glm::vec3(0.0f, 0.0f, 1.0f);
-		blueMaterial.surfaceProp.y = 0;
+		blueMaterial.surfaceProp.y = 0.0f;
+		blueMaterial.internalProp.x = 0.8f;
+		blueMaterial.internalProp.y = 1.0f;
 
 		engine.addMaterial(blueMaterial);
 
 		Material lightMaterial;
 		lightMaterial.color = glm::vec3(1.0f, 1.0f, 1.0f);
-		lightMaterial.surfaceProp.x = 1.0; // Full Emission;
+		lightMaterial.surfaceProp.x = 8.0f; // Full Emission;
 
 		engine.addMaterial(lightMaterial);
 
 		Material groundMaterial;
 		groundMaterial.color = glm::vec3(0.2f, 0.2f, 0.2f);
-		groundMaterial.surfaceProp.y = 0;
+		groundMaterial.surfaceProp.y = 0.0f;
 
 		engine.addMaterial(groundMaterial);
 
 		Ball* ball0 = new Ball();
 		ball0->radius = 2.0f;
-		ball0->origin = glm::vec3(0.0f,0.0f,-3.0f);
+		ball0->origin = glm::vec3(0.0f, 0.0f, 0.0f);
 		
 		Ball* ball1 = new Ball();
 		ball1->materialIndex = 1;
 		ball1->radius = 2.0f;
-		ball1->origin = glm::vec3(6.0f, 0.0f, 0.0f);
+		ball1->origin = glm::vec3(2.0f, 0.0f, -4.0f);
 
 		Ball* ball2 = new Ball();
 		ball2->materialIndex = 2;
 		ball2->radius = 2.0f;
-		ball2->origin = glm::vec3(-6.0f, 0.0f, 0.0f);
+		ball2->origin = glm::vec3(-2.0f, 0.0f, 4.0f);
 
 		Ball* ball3 = new Ball();
 		ball3->materialIndex = 3;
-		ball3->radius = 3.0f;
-		ball3->origin = glm::vec3(0.0f, 5.0f, 0.0f);
+		ball3->radius = 5.0f;
+		ball3->origin = glm::vec3(-10.0f, 10.0f, 0.0f);
+
+		Ball* ball4 = new Ball();
+		ball4->materialIndex = 3;
+		ball4->radius = 5.0f;
+		ball4->origin = glm::vec3(10.0f, 10.0f, 0.0f);
 
 		engine.addBall(ball0);
 		engine.addBall(ball1);
@@ -73,7 +84,7 @@ int main(int argc, char** argv) {
 		Box* box0 = new Box();
 		box0->materialIndex = 4;
 		box0->boxMin = glm::vec3(-20,-5,-10);
-		box0->boxMax = glm::vec3(20,-3,10);
+		box0->boxMax = glm::vec3(20,-2,10);
 
 		engine.addBox(box0);
 

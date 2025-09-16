@@ -5,9 +5,9 @@
 #define MAXOBJECTS 32
 
 struct alignas(16) Material {
-	glm::vec3 color = glm::vec3(1.0, 1.0, 1.0);
-	glm::vec3 surfaceProp = glm::vec3(0.0, 0.0, 0.0); //emission, reflectiveness, smoothness
-	glm::vec3 internalProp = glm::vec3(0.0, 0.0, 0.0); // transparency, refrac, scatter
+	glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
+	glm::vec3 surfaceProp = glm::vec3(0.0f, 0.0f, 0.0f); // emission, reflectiveness, smoothness
+	glm::vec3 internalProp = glm::vec3(0.0f, 0.0f, 0.0f); // transparency, refrac, scatter
 };
 
 // Custom Objects
@@ -15,7 +15,7 @@ struct alignas(16) Material {
 class alignas(16) Ball {
 public:
 	uint32_t materialIndex = 0;
-	alignas(16) glm::vec3 origin = glm::vec3(0,0,0); // x, y, z
+	alignas(16) glm::vec3 origin = glm::vec3(0.0f,0.0f,0.0f); // x, y, z
 	float radius = 0.0;
 
 	Ball() {}
@@ -24,8 +24,8 @@ public:
 class alignas(16) Box {
 public:
 	uint32_t materialIndex = 0;
-	alignas(16) glm::vec3 boxMin = glm::vec3(0,0,0); // x, y, z
-	alignas(16) glm::vec3 boxMax = glm::vec3(0,0,0); // x, y, z
+	alignas(16) glm::vec3 boxMin = glm::vec3(0.0f,0.0f,0.0f); // x, y, z
+	alignas(16) glm::vec3 boxMax = glm::vec3(0.0f,0.0f,0.0f); // x, y, z
 
 	Box() {}
 };

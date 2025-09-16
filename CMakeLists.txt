@@ -80,9 +80,11 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "Source Files" FILES 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Copy Shaders
-add_custom_command(TARGET Raytracer POST_BUILD
+add_custom_target(copy_shaders ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:Raytracer>/shaders
+            ${CMAKE_SOURCE_DIR}/shaders
+            $<TARGET_FILE_DIR:Raytracer>/shaders
+    DEPENDS Raytracer
 )
 
 message(STATUS "Raytracer sources: ${Raytracer_SOURCES}")

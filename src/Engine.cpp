@@ -1223,10 +1223,7 @@ private:
 		}
 
 		for (auto imageView : swapChainImageViews) {
-			//if (imageView != VK_NULL_HANDLE) {
-				vkDestroyImageView(device, imageView, nullptr);
-				//imageView = VK_NULL_HANDLE;
-			//}
+			vkDestroyImageView(device, imageView, nullptr);
 		}
 
 		vkDestroySwapchainKHR(device, swapChain, nullptr);
