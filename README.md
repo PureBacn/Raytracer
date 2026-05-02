@@ -44,7 +44,7 @@ The engine operates by casting rays from the camera through each pixel in the vi
 2. Create a build directory and compile:
    ```bash
    cmake --preset default
-   cmake --build . --config Release
+   cmake --build .
    ```
 ### Running the Renderer
 
