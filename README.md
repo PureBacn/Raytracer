@@ -1,6 +1,6 @@
 # Raytracer
 
-A basic ray tracing engine written in C++. This project implements the core principles of ray-object intersection, light transport, and realistic shading to generate photorealistic 3D images from scratch.
+Built a high-performance C++ ray tracing engine using Vulkan, implementing ray-object intersection, recursive light transport with reflection and refraction, and realistic shading models. Designed rendering pipelines and a modular scene framework supporting soft shadows, configurable material properties, and multi-sample rendering for improved image quality, emphasizing performance and correctness.
 
 ---
 
@@ -10,6 +10,7 @@ A basic ray tracing engine written in C++. This project implements the core prin
 * **Recursive Ray Tracing**: Support for multiple reflection and refraction bounces to simulate complex light paths.
 * **Intersection Algorithms**: Mathematically accurate hit detection for primitive shapes, including spheres and planes.
 * **Camera Model**: Configurable perspective camera with adjustable field of view and positioning.
+* **Rendering Pipelines**: Used Vulkan rendering pipelines to organize rendering execution and shading operations.
 
 ### Shading and Materials
 * **Phong Reflection Model**: Combines ambient, diffuse, and specular lighting for realistic surface shading.
