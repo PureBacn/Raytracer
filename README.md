@@ -1,4 +1,4 @@
-# Raytracer
+# Vulkan Ray Tracing Engine
 
 Built a high-performance C++ ray tracing engine using Vulkan, implementing ray-object intersection, recursive light transport with reflection and refraction, and realistic shading models. Designed rendering pipelines and a modular scene framework supporting soft shadows, configurable material properties, and multi-sample rendering for improved image quality, emphasizing performance and correctness.
 
